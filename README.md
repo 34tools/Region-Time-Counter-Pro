@@ -14,6 +14,7 @@ Developed as part of **34dev.tools**.
 
 - Total region duration (union of all regions)
 - Selected region duration (union of checked regions)
+- Markers displayed (not included in totals)
 - Searchable region list
 - Per-region duration display
 - Shift-click range selection
@@ -38,6 +39,7 @@ Developed as part of **34dev.tools**.
 ## Usage
 
 - Check regions to include them in **Selected**
+- Markers are visible but do not affect total calculations
 - Use **Shift-click** to select ranges
 - Use **Search** to filter regions
 - Use **All / Clear** for quick selection
