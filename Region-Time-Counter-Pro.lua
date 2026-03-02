@@ -1,49 +1,58 @@
 -- Region Time Counter Pro (macOS-safe UI)
 -- Author: 34birds
--- @version 2.2.1
--- @description Fixed 569x524. Total/Selected union, searchable checkbox list, shift range toggle, cmd additive toggle, arrows scroll, persistent checks, scrollbar.
+-- @version 3.0.0
+-- @description Wrap-list variant: TOP border fixed (safe-zone guards are used), BOTTOM border NOT fixed yet (intentional). Markers are shown but don't affect totals.
 -- @about
 --   No js_ReaScriptAPI required.
 
 local r = reaper
 local proj = 0
 
--- ===== Fixed window (BASE) =====
+-- ===== Fixed window =====
 local WINDOW_TITLE = "Region Time Counter Pro"
-local WIN_W, WIN_H = 569, 524
+local WIN_W, WIN_H = 520, 520
 
--- ===== Typography (BASE) =====
+-- ===== Typography =====
 local FONT_MAIN  = "Helvetica"
-local TITLE_SIZE = 24
+local TITLE_SIZE = 26
 local LABEL_SIZE = 24
 local VALUE_SIZE = 24
-local LIST_SIZE  = 16
+local LIST_SIZE  = 14
 local SEARCH_SIZE= 16
 
 -- ===== Layout =====
 local PAD = 14
-local GAP = 10
-
-local ROW_H = 22
-local CHECK_W = 18
+local GAP = 14
 
 local BTN_W = 90
 local BTN_H = 26
 local BTN_GAP = 10
-
 local SEARCH_H = 26
 
--- Your preferred simple control:
-local STATS_LINE_GAP = 5              -- расстояние между строками Total и Selected
-local STATS_TO_CONTROLS_GAP = 18      -- расстояние между Selected и блоком кнопок/поиска
+local STATS_LINE_GAP = 5
+local STATS_TO_CONTROLS_GAP = 18
 
--- List inner padding (NEW)
-local LIST_PAD_TOP = 6                -- отлепляет первую строку от верхней рамки списка
+-- List/table look
+local ROW_PAD_Y  = 8
+local COL_GAP    = 3
+local CELL_PAD_X = 7
 
--- Scroll
-local SCROLL_STEP = 3
-local SB_W = 12
-local SB_PAD = 3
+-- These were your “almost perfect” settings (TOP fixed via padding):
+local TEXT_STRICT_CLIP = false     -- true = strict (A), false = soft (B)
+local TEXT_CLIP_PAD_TOP = 1       -- top safe-zone padding (fixes TOP border bleed)
+local TEXT_CLIP_PAD_BOT = 12        -- bottom NOT fixed yet (intentional for this rollback)
+
+local ICON_W = 25          -- col 0: square/check
+local COL1_W = 35          -- col 1: M#/R#
+local LEN_W  = 72          -- reserved on the right of col 2 for hh:mm:ss (regions only)
+
+local LINE_H = LIST_SIZE + 4
+
+-- Scroll (pixel-based because variable row height)
+local SCROLL_W = 12
+local SCROLL_MARGIN_R = 0
+local SCROLL_RESERVE = SCROLL_W + SCROLL_MARGIN_R + 6
+local WHEEL_STEP_PX = (LINE_H * 2)
 
 -- Refresh
 local AUTO_REFRESH = true
@@ -51,54 +60,36 @@ local REFRESH_INTERVAL_SEC = 0.5
 
 -- Persistence (in project)
 local EXT_SECTION = "RTCPro"
-local EXT_KEY_CHECKED = "checked_ids"
+local EXT_KEY_CHECKED = "checked_keys" -- stores "R12,M5,..." (prefix + id)
 
--- ===== Colors =====
-local COL_BG      = {0.07, 0.07, 0.07, 1}
-local COL_TITLE   = {0.95, 0.95, 0.95, 1}
-local COL_LABEL   = {0.85, 0.85, 0.85, 1}
-local COL_TOTAL   = {0.25, 0.95, 0.35, 1} -- green
-local COL_SEL     = {0.98, 0.86, 0.25, 1} -- yellow
+-- ===== Colors (light theme) =====
+local BG_R, BG_G, BG_B = 223/255, 225/255, 225/255
+local SEL_R, SEL_G, SEL_B = 241/255, 241/255, 241/255
+local BORDER_A = 0.10
 
-local COL_LIST_BG = {0.10, 0.10, 0.10, 1}
-local COL_LIST_BR = {0.25, 0.25, 0.25, 1}
-local COL_ROW_ALT = {0.12, 0.12, 0.12, 1}
-local COL_ROW_HOV = {0.17, 0.17, 0.17, 1}
+-- squares
+local SQ_REGION_R, SQ_REGION_G, SQ_REGION_B = 0.55, 0.55, 0.55
+local SQ_MARKER_R, SQ_MARKER_G, SQ_MARKER_B = 0.75, 0.10, 0.10
+local SQ_FILL_A = 0.06
+local SQ_BORDER_A = 0.85
 
--- highlight checked rows
-local COL_ROW_CHECKED = {0.14, 0.14, 0.10, 1}
+-- checkmark
+local CHECK_TX_R, CHECK_TX_G, CHECK_TX_B = 0, 0, 0
 
-local COL_TEXT    = {0.92, 0.92, 0.92, 1}
-local COL_TEXT_DIM= {0.85, 0.85, 0.85, 1}
+-- Scrollbar (only thumb)
+local SCROLL_THUMB_A = 0.38
 
-local COL_BTN     = {0.14, 0.14, 0.14, 1}
-local COL_BTN_HOV = {0.20, 0.20, 0.20, 1}
-local COL_BTN_BR  = {0.35, 0.35, 0.35, 1}
-
-local COL_CB_BG   = {0.12, 0.12, 0.12, 1}
-local COL_CB_BR   = {0.35, 0.35, 0.35, 1}
-
-local COL_SB_TRK  = {0.09, 0.09, 0.09, 1}
-local COL_SB_TRK_BR = {0.30, 0.30, 0.30, 1}
-local COL_SB_THMB = {0.26, 0.26, 0.26, 1}
-local COL_SB_THMB_HOT = {0.32, 0.32, 0.32, 1}
-local COL_SB_THMB_BR = {0.38, 0.38, 0.38, 1}
-
-local COL_SEARCH_BG = {0.12, 0.12, 0.12, 1}
-local COL_SEARCH_BR = {0.35, 0.35, 0.35, 1}
-local COL_SEARCH_TX = {0.92, 0.92, 0.92, 1}
-local COL_SEARCH_PH = {0.55, 0.55, 0.55, 1}
+-- Stats colors (for light bg)
+local COL_TOTAL = {0.10, 0.55, 0.15, 1}
+local COL_SEL   = {0.65, 0.52, 0.05, 1}
 
 -- ===== State =====
-local regions = {}
-local region_by_id = {}
-
-local checked = {}
-local scroll = 0
+local items = {}            -- merged list: markers + regions, time-sorted
+local region_by_id = {}     -- regions only, for totals/selected
+local checked = {}          -- checked[key] = true, where key is "R12" or "M7"
 
 local total_sec = 0.0
 local selected_sec = 0.0
-
 local last_refresh = 0
 
 -- filtered list
@@ -106,24 +97,20 @@ local search_query = ""
 local search_focus = false
 local display = {}
 
--- mouse + wheel
-local last_mouse_cap = 0
-local last_mouse_wheel = 0
+-- scroll + cache
+local scroll_y = 0
+local total_h = 0
+local max_scroll = 0
+local row_cache = {} -- [i] = {h=..., lines={...}}
 
--- scrollbar
+-- scrollbar drag
 local sb_drag = false
 local sb_drag_offset = 0
-local sb_thumb_y = 0
-local sb_thumb_h = 0
-local sb_track_y = 0
-local sb_track_h = 0
-local sb_max_scroll = 0
 
 -- shift anchor (display indices)
 local last_clicked_disp_index = nil
 
 -- ===== Helpers =====
-local function setc(t) gfx.set(t[1], t[2], t[3], t[4] or 1) end
 local function clamp(x, a, b) if x<a then return a elseif x>b then return b else return x end end
 local function trim(s) if not s then return "" end return (tostring(s):gsub("^%s+",""):gsub("%s+$","")) end
 local function in_rect(mx,my,x,y,w,h) return mx>=x and mx<(x+w) and my>=y and my<(y+h) end
@@ -163,53 +150,85 @@ local function contains_ci(hay, needle)
   return lower(hay):find(lower(needle), 1, true) ~= nil
 end
 
+-- UTF-8 safe iterator
+local function utf8_chars(s)
+  return tostring(s):gmatch("[%z\1-\127\194-\244][\128-\191]*")
+end
+
+local function make_key(isrgn, id)
+  return (isrgn and "R" or "M") .. tostring(tonumber(id) or 0)
+end
+
 -- ===== Persistence =====
 local function save_checked()
-  local ids = {}
-  for id,on in pairs(checked) do
-    if on then ids[#ids+1] = tonumber(id) end
+  local keys = {}
+  for k,on in pairs(checked) do
+    if on then keys[#keys+1] = tostring(k) end
   end
-  table.sort(ids)
-  r.SetProjExtState(proj, EXT_SECTION, EXT_KEY_CHECKED, table.concat(ids, ","))
+  table.sort(keys)
+  r.SetProjExtState(proj, EXT_SECTION, EXT_KEY_CHECKED, table.concat(keys, ","))
 end
 
 local function load_checked()
   local ret, s = r.GetProjExtState(proj, EXT_SECTION, EXT_KEY_CHECKED)
   if ret ~= 1 or not s or s == "" then return end
   checked = {}
-  for token in tostring(s):gmatch("%d+") do
-    checked[tonumber(token)] = true
+  for token in tostring(s):gmatch("[RM]%d+") do
+    checked[token] = true
   end
 end
 
--- ===== Regions =====
-local function rebuild_regions()
-  local new_regions, new_by_id = {}, {}
+-- ===== Data rebuild (markers + regions) =====
+local function rebuild_items()
+  items = {}
+  region_by_id = {}
+
   local _, numMarkers, numRegions = r.CountProjectMarkers(proj)
-  for idx=0,(numMarkers+numRegions-1) do
-    local retval, isRegion, startPos, endPos, name, markrgnindexnumber = r.EnumProjectMarkers3(proj, idx)
-    if retval and isRegion and endPos > startPos then
-      local id = tonumber(markrgnindexnumber)
-      local reg = { id=id, start=startPos, ["end"]=endPos, name=name or "", len=(endPos-startPos) }
-      new_regions[#new_regions+1] = reg
-      new_by_id[id] = reg
+  local total = numMarkers + numRegions
+
+  for enum_idx = 0, total - 1 do
+    local retval, isrgn, pos, rgnend, name, shown_id = r.EnumProjectMarkers3(proj, enum_idx)
+    if retval then
+      shown_id = tonumber(shown_id) or 0
+      local it = {
+        enum_idx = enum_idx,
+        isrgn = (isrgn == true),
+        pos = pos or 0,
+        rgnend = rgnend or 0,
+        name = name or "",
+        shown_id = shown_id,
+        key = make_key(isrgn == true, shown_id),
+        len = 0.0,
+      }
+
+      if it.isrgn and (it.rgnend > it.pos) then
+        it.len = (it.rgnend - it.pos)
+        region_by_id[shown_id] = { start=it.pos, ["end"]=it.rgnend }
+      end
+
+      items[#items+1] = it
     end
   end
-  table.sort(new_regions, function(a,b)
-    if a.id == b.id then return a.start < b.start end
-    return a.id < b.id
-  end)
-  regions = new_regions
-  region_by_id = new_by_id
 
-  for id,_ in pairs(checked) do
-    if not region_by_id[id] then checked[id] = nil end
+  table.sort(items, function(a,b)
+    if a.pos == b.pos then
+      if a.isrgn == b.isrgn then return a.shown_id < b.shown_id end
+      return (a.isrgn == false)
+    end
+    return a.pos < b.pos
+  end)
+
+  -- prune checks that no longer exist
+  local existing = {}
+  for _,it in ipairs(items) do existing[it.key] = true end
+  for k,_ in pairs(checked) do
+    if not existing[k] then checked[k] = nil end
   end
 end
 
 local function compute_total()
   local intervals = {}
-  for _,reg in ipairs(regions) do
+  for _,reg in pairs(region_by_id) do
     intervals[#intervals+1] = {reg.start, reg["end"]}
   end
   total_sec = union_length(intervals)
@@ -217,9 +236,10 @@ end
 
 local function compute_selected()
   local intervals = {}
-  for id,on in pairs(checked) do
-    if on then
-      local reg = region_by_id[id]
+  for k,on in pairs(checked) do
+    if on and k:sub(1,1) == "R" then
+      local id = tonumber(k:sub(2))
+      local reg = id and region_by_id[id]
       if reg then intervals[#intervals+1] = {reg.start, reg["end"]} end
     end
   end
@@ -229,60 +249,102 @@ end
 local function rebuild_display(reset_anchor)
   display = {}
   local q = trim(search_query)
-  for _,reg in ipairs(regions) do
-    if q == "" or contains_ci(reg.name, q) or contains_ci(("R"..reg.id), q) then
-      display[#display+1] = reg
+  for _,it in ipairs(items) do
+    local tag = (it.isrgn and "R" or "M") .. tostring(it.shown_id)
+    if q == "" or contains_ci(it.name, q) or contains_ci(tag, q) then
+      display[#display+1] = it
     end
   end
-  scroll = clamp(scroll, 0, math.max(0, #display - 1))
-  if reset_anchor then
-    last_clicked_disp_index = nil
-  end
+  if reset_anchor then last_clicked_disp_index = nil end
 end
 
 local function refresh(reset_anchor)
-  rebuild_regions()
+  rebuild_items()
   compute_total()
   compute_selected()
   rebuild_display(reset_anchor)
   last_refresh = r.time_precise()
 end
 
+-- ===== Wrap (rollback state: same as your last pasted version; single long word WITHOUT spaces can still be unwrapped) =====
+local function wrap_text_to_width(text, max_w)
+  if not text or text == "" then return {""} end
+  if max_w < 20 then return {tostring(text)} end
+
+  local lines = {}
+  local words = {}
+
+  for w in tostring(text):gmatch("%S+") do
+    words[#words+1] = w
+  end
+  if #words == 0 then return {""} end
+
+  local cur = words[1]
+
+  for i = 2, #words do
+    local cand = cur .. " " .. words[i]
+    if gfx.measurestr(cand) <= max_w then
+      cur = cand
+    else
+      if gfx.measurestr(words[i]) > max_w then
+        lines[#lines+1] = cur
+        cur = ""
+
+        local chunk = ""
+        local s = words[i]
+        for ch in s:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+          local cand2 = chunk .. ch
+          if gfx.measurestr(cand2) <= max_w then
+            chunk = cand2
+          else
+            if chunk ~= "" then lines[#lines+1] = chunk end
+            chunk = ch
+          end
+        end
+        cur = chunk
+      else
+        lines[#lines+1] = cur
+        cur = words[i]
+      end
+    end
+  end
+
+  if cur ~= "" then lines[#lines+1] = cur end
+  return lines
+end
+
+local function calc_row_h(num_lines)
+  if num_lines < 1 then num_lines = 1 end
+  return (ROW_PAD_Y * 2) + LIST_SIZE + ((num_lines - 1) * LINE_H)
+end
+
 -- ===== UI atoms =====
 local function draw_button(x,y,w,h,label,hot)
-  setc(hot and COL_BTN_HOV or COL_BTN); gfx.rect(x,y,w,h,1)
-  setc(COL_BTN_BR); gfx.rect(x,y,w,h,0)
+  if hot then gfx.set(0,0,0,0.08) else gfx.set(0,0,0,0.05) end
+  gfx.rect(x,y,w,h,1)
+  gfx.set(0,0,0,0.20); gfx.rect(x,y,w,h,0)
+
   gfx.setfont(1, FONT_MAIN, LIST_SIZE)
-  setc(COL_TITLE)
+  gfx.set(0,0,0,1)
   local tw, th = gfx.measurestr(label)
   gfx.x = x + math.floor((w - tw)/2)
   gfx.y = y + math.floor((h - th)/2)
   gfx.drawstr(label)
 end
 
-local function draw_checkbox(x,y,on)
-  setc(COL_CB_BG); gfx.rect(x,y,CHECK_W,CHECK_W,1)
-  setc(COL_CB_BR); gfx.rect(x,y,CHECK_W,CHECK_W,0)
-  if on then
-    setc(COL_TITLE)
-    gfx.x = x + 4
-    gfx.y = y - 1
-    gfx.drawstr("✓")
-  end
-end
-
 local function draw_search_box(x,y,w,h,focused)
-  setc(COL_SEARCH_BG); gfx.rect(x,y,w,h,1)
-  setc(focused and {0.55,0.55,0.55,1} or COL_SEARCH_BR); gfx.rect(x,y,w,h,0)
+  gfx.set(0,0,0,0.04); gfx.rect(x,y,w,h,1)
+  if focused then gfx.set(0,0,0,0.30) else gfx.set(0,0,0,0.20) end
+  gfx.rect(x,y,w,h,0)
 
   gfx.setfont(1, FONT_MAIN, SEARCH_SIZE)
   local text = search_query
   if text == "" and not focused then
-    setc(COL_SEARCH_PH)
+    gfx.set(0,0,0,0.35)
     gfx.x = x + 8; gfx.y = y + 5
-    gfx.drawstr("Search regions by name…")
+    gfx.drawstr("Search markers/regions…")
   else
-    setc(COL_SEARCH_TX)
+    gfx.set(0,0,0,1)
     gfx.x = x + 8; gfx.y = y + 5
     gfx.drawstr(text)
     if focused then
@@ -294,53 +356,69 @@ local function draw_search_box(x,y,w,h,focused)
   end
 end
 
--- ===== Scrollbar =====
-local function compute_scrollbar(list_y, list_h, rows_visible)
-  sb_max_scroll = math.max(0, #display - rows_visible)
-  sb_track_y = list_y + SB_PAD
-  sb_track_h = math.max(8, list_h - SB_PAD*2)
+local function draw_square(x, y, size, is_region)
+  if is_region then
+    gfx.set(SQ_REGION_R, SQ_REGION_G, SQ_REGION_B, SQ_BORDER_A)
+  else
+    gfx.set(SQ_MARKER_R, SQ_MARKER_G, SQ_MARKER_B, SQ_BORDER_A)
+  end
+  gfx.rect(x, y, size, size, 0)
 
-  local total_rows = math.max(1, #display)
-  local visible_ratio = rows_visible / total_rows
-  sb_thumb_h = math.floor(sb_track_h * visible_ratio)
-  sb_thumb_h = clamp(sb_thumb_h, 18, sb_track_h)
-
-  local track_range = sb_track_h - sb_thumb_h
-  local t = (sb_max_scroll > 0) and (scroll / sb_max_scroll) or 0
-  sb_thumb_y = math.floor(sb_track_y + track_range * t)
+  if is_region then
+    gfx.set(SQ_REGION_R, SQ_REGION_G, SQ_REGION_B, SQ_FILL_A)
+  else
+    gfx.set(SQ_MARKER_R, SQ_MARKER_G, SQ_MARKER_B, SQ_FILL_A)
+  end
+  gfx.rect(x+1, y+1, size-2, size-2, 1)
 end
 
-local function draw_scrollbar(sb_x, sb_y, sb_w, sb_h, hot)
-  setc(COL_SB_TRK); gfx.rect(sb_x, sb_y, sb_w, sb_h, 1)
-  setc(COL_SB_TRK_BR); gfx.rect(sb_x, sb_y, sb_w, sb_h, 0)
-
-  if sb_max_scroll <= 0 then setc(COL_SB_THMB)
-  else setc((sb_drag or hot) and COL_SB_THMB_HOT or COL_SB_THMB) end
-
-  gfx.rect(sb_x+2, sb_thumb_y, sb_w-4, sb_thumb_h, 1)
-  setc(COL_SB_THMB_BR); gfx.rect(sb_x+2, sb_thumb_y, sb_w-4, sb_thumb_h, 0)
+local function draw_checkmark(x, y)
+  gfx.set(CHECK_TX_R, CHECK_TX_G, CHECK_TX_B, 1)
+  gfx.x = x
+  gfx.y = y
+  gfx.drawstr("✓")
 end
 
-local function scroll_by(delta_rows)
-  scroll = clamp(scroll + delta_rows, 0, sb_max_scroll)
+-- ===== Scrollbar (pixel-based) =====
+local function clamp_scroll()
+  if scroll_y < 0 then scroll_y = 0 end
+  if scroll_y > max_scroll then scroll_y = max_scroll end
+  scroll_y = math.floor(scroll_y + 0.5)
 end
 
-local function set_scroll_from_thumb_y(y)
-  local track_range = sb_track_h - sb_thumb_h
-  if track_range <= 0 or sb_max_scroll <= 0 then scroll = 0; return end
-  local rel = clamp(y - sb_track_y, 0, track_range)
-  local t = rel / track_range
-  scroll = math.floor(t * sb_max_scroll + 0.5)
-  scroll = clamp(scroll, 0, sb_max_scroll)
+local function get_thumb(list_y, list_h)
+  local track_y = list_y
+  local track_h = list_h
+  local total = math.max(1, total_h)
+  local visible_ratio = list_h / total
+  local thumb_h = math.max(18, track_h * visible_ratio)
+  if thumb_h > track_h then thumb_h = track_h end
+
+  local thumb_y = track_y
+  if max_scroll > 0 then
+    thumb_y = track_y + (track_h - thumb_h) * (scroll_y / max_scroll)
+  end
+  return math.floor(thumb_y), math.floor(thumb_h)
+end
+
+local function set_scroll_from_thumb(my, list_y, list_h, thumb_h, drag_offset)
+  local track_y = list_y
+  local track_h = list_h
+  local range = track_h - thumb_h
+  if range <= 0 or max_scroll <= 0 then scroll_y = 0; return end
+  local new_thumb_y = clamp(my - drag_offset, track_y, track_y + range)
+  local t = (new_thumb_y - track_y) / range
+  scroll_y = t * max_scroll
+  clamp_scroll()
 end
 
 -- ===== Checking logic =====
-local function set_check(id, on) if on then checked[id]=true else checked[id]=nil end end
-local function toggle_check(id) if checked[id] then checked[id]=nil else checked[id]=true end end
-
 local function set_all(on)
-  if on then for _,reg in ipairs(regions) do checked[reg.id]=true end
-  else checked = {} end
+  if on then
+    for _,it in ipairs(items) do checked[it.key] = true end
+  else
+    checked = {}
+  end
   compute_selected()
   save_checked()
 end
@@ -348,31 +426,47 @@ end
 local function apply_range(from_i, to_i, on)
   if from_i > to_i then from_i, to_i = to_i, from_i end
   for i=from_i, to_i do
-    local reg = display[i]
-    if reg then set_check(reg.id, on) end
+    local it = display[i]
+    if it then
+      if on then checked[it.key] = true else checked[it.key] = nil end
+    end
   end
+end
+
+-- ===== Hit test (variable heights) =====
+local function hit_test_row(mx, my, content_x, content_y, content_w, content_h)
+  if mx < content_x or mx > (content_x + content_w) then return nil end
+  if my < content_y or my > (content_y + content_h) then return nil end
+
+  local yy = content_y - scroll_y
+  for i=1,#display do
+    local rh = (row_cache[i] and row_cache[i].h) or (ROW_PAD_Y*2 + LIST_SIZE)
+    if my >= yy and my <= (yy + rh) then return i end
+    yy = yy + rh
+  end
+  return nil
 end
 
 -- ===== Keys =====
 local KEY_BACKSPACE = 8
 local KEY_ENTER1    = 13
 local KEY_ENTER2    = 10
-
 local KEY_UP   = 30064
 local KEY_DOWN = 1685026670
 
 local function handle_key(ch)
   if ch == 0 then return end
-  if ch == KEY_UP then scroll_by(-1); return end
-  if ch == KEY_DOWN then scroll_by(1); return end
+
+  if ch == KEY_UP then scroll_y = scroll_y - WHEEL_STEP_PX; clamp_scroll(); return end
+  if ch == KEY_DOWN then scroll_y = scroll_y + WHEEL_STEP_PX; clamp_scroll(); return end
 
   if not search_focus then return end
 
   if ch == KEY_BACKSPACE then
     if #search_query > 0 then
       search_query = search_query:sub(1, #search_query-1)
-      rebuild_display(true) -- search change => reset anchor
-      scroll = 0
+      rebuild_display(true)
+      scroll_y = 0
     end
     return
   elseif ch == KEY_ENTER1 or ch == KEY_ENTER2 then
@@ -382,27 +476,28 @@ local function handle_key(ch)
 
   if ch >= 32 and ch <= 126 then
     search_query = search_query .. string.char(ch)
-    rebuild_display(true) -- search change => reset anchor
-    scroll = 0
+    rebuild_display(true)
+    scroll_y = 0
   end
 end
 
 -- ===== Main loop =====
+local last_mouse_cap = 0
+
 local function loop()
   if gfx.w ~= WIN_W or gfx.h ~= WIN_H then
-    gfx.init(WINDOW_TITLE, WIN_W, WIN_H, 0)
+    gfx.init(WINDOW_TITLE, WIN_W, WIN_H, 0, 200, 150)
   end
 
   local ch = gfx.getchar()
-  if ch < 0 or ch == 27 then return end
+    if ch < 0 or ch == 27 then return end
   if ch > 0 then handle_key(ch) end
 
-  -- refresh WITHOUT resetting shift anchor
   if AUTO_REFRESH then
     local now = r.time_precise()
     if (now - last_refresh) >= REFRESH_INTERVAL_SEC then
       local keep_query = search_query
-      refresh(false)                 -- <- ключевое: не сбрасываем last_clicked_disp_index
+      refresh(false)
       search_query = keep_query
       rebuild_display(false)
     end
@@ -413,23 +508,20 @@ local function loop()
   local lmb_down = (cap & 1) == 1
   local lmb_click = (lmb_down and (last_mouse_cap & 1) == 0)
   local lmb_release = ((cap & 1) == 0 and (last_mouse_cap & 1) == 1)
-
-  -- modifiers:
   local shift = (cap & 8) == 8
-  -- Cmd bit can vary; accept several common bits as "additive modifier"
-  local cmd = ((cap & 16) == 16) or ((cap & 32) == 32) or ((cap & 4) == 4)
 
-  -- BG
-  setc(COL_BG); gfx.rect(0,0,gfx.w,gfx.h,1)
+  -- background
+  gfx.set(BG_R, BG_G, BG_B, 1)
+  gfx.rect(0,0,gfx.w,gfx.h,1)
 
-  -- Title
+  -- title
   gfx.setfont(1, FONT_MAIN, TITLE_SIZE)
-  setc(COL_TITLE)
+  gfx.set(0,0,0,1)
   gfx.x = PAD; gfx.y = PAD
   gfx.drawstr(WINDOW_TITLE)
   local _, title_h = gfx.measurestr(WINDOW_TITLE)
 
-  -- Stats (simple fixed rhythm, as you wanted)
+  -- stats
   local right_edge = gfx.w - PAD
   local line1_y = PAD + title_h + GAP
   local line2_y = line1_y + VALUE_SIZE + STATS_LINE_GAP
@@ -445,12 +537,12 @@ local function loop()
     local x_value = right_edge - vw
 
     gfx.setfont(1, FONT_MAIN, LABEL_SIZE)
-    setc(COL_LABEL)
+    gfx.set(0,0,0,0.70)
     gfx.x = x_label; gfx.y = y
     gfx.drawstr(label)
 
     gfx.setfont(1, FONT_MAIN, VALUE_SIZE)
-    setc(value_color)
+    gfx.set(value_color[1], value_color[2], value_color[3], value_color[4] or 1)
     gfx.x = x_value; gfx.y = y
     gfx.drawstr(value)
   end
@@ -458,7 +550,7 @@ local function loop()
   draw_right_pair(line1_y, "Total:", format_hhmmss(total_sec), COL_TOTAL)
   draw_right_pair(line2_y, "Selected:", format_hhmmss(selected_sec), COL_SEL)
 
-  -- Controls row (Variant B spacing)
+  -- controls row
   local controls_y = line2_y + VALUE_SIZE + STATS_TO_CONTROLS_GAP
 
   local all_x = PAD
@@ -486,121 +578,200 @@ local function loop()
     end
   end
 
-  -- List rect
+  -- list/table rect
   local list_y = controls_y + math.max(BTN_H, SEARCH_H) + GAP
   local list_x = PAD
   local list_w = gfx.w - PAD*2
   local list_h = gfx.h - list_y - PAD
 
-  setc(COL_LIST_BG); gfx.rect(list_x, list_y, list_w, list_h, 1)
-  setc(COL_LIST_BR); gfx.rect(list_x, list_y, list_w, list_h, 0)
+  -- outer frame
+  gfx.set(0,0,0,BORDER_A)
+  gfx.rect(list_x, list_y, list_w, list_h, 0)
+
+  -- inner content (reserve scrollbar)
+  local content_x = list_x
+  local content_y = list_y
+  local content_w = list_w - SCROLL_RESERVE
+  local content_h = list_h
+
+  local icon_w = ICON_W
+  local col1_w = COL1_W
+  local col2_w = content_w - icon_w - COL_GAP - col1_w - COL_GAP
+  if col2_w < 120 then col2_w = 120 end
 
   gfx.setfont(1, FONT_MAIN, LIST_SIZE)
 
-  -- Content area (NEW: top padding so first row is not glued to border)
-  local content_w = list_w - SB_W - 8
-  local content_x = list_x
-  local content_y = list_y + LIST_PAD_TOP
-  local content_h = list_h - LIST_PAD_TOP
+  -- wrap width inside col2 (reserve len on the right)
+  local wrap_w = col2_w - (CELL_PAD_X*2) - LEN_W
+  if wrap_w < 40 then wrap_w = 40 end
 
-  local rows_visible = math.max(1, math.floor(content_h / ROW_H))
-  compute_scrollbar(list_y, list_h, rows_visible)
-  scroll = clamp(scroll, 0, sb_max_scroll)
-
-  -- wheel scroll (within content)
-  if in_rect(mx,my,content_x,content_y,content_w,content_h) and gfx.mouse_wheel ~= last_mouse_wheel then
-    local delta = gfx.mouse_wheel - last_mouse_wheel
-    if delta ~= 0 then
-      local notch = (delta > 0) and 1 or -1
-      scroll_by(-notch * SCROLL_STEP)
-    end
-    last_mouse_wheel = gfx.mouse_wheel
-  else
-    last_mouse_wheel = gfx.mouse_wheel
+  -- build row cache + total height
+  row_cache = {}
+  total_h = 0
+  for i=1,#display do
+    local it = display[i]
+    local lines = wrap_text_to_width(trim(it.name), wrap_w)
+    local rh = calc_row_h(#lines)
+    row_cache[i] = { h = rh, lines = lines }
+    total_h = total_h + rh
   end
 
-  -- rows
-  local right_pad = 10
-  for i=0, rows_visible-1 do
-    local disp_index = scroll + i + 1
-    if disp_index > #display then break end
+  max_scroll = math.max(0, total_h - content_h)
+  clamp_scroll()
 
-    local reg = display[disp_index]
-    local row_y = content_y + i*ROW_H
-    local row_hot = in_rect(mx,my,content_x,row_y,content_w,ROW_H)
-    local is_checked = (checked[reg.id] == true)
+  -- wheel scroll
+  if in_rect(mx,my,content_x,content_y,content_w,content_h) and gfx.mouse_wheel ~= 0 then
+    local delta = (gfx.mouse_wheel / 120) * WHEEL_STEP_PX
+    scroll_y = scroll_y - delta
+    gfx.mouse_wheel = 0
+    clamp_scroll()
+  else
+    gfx.mouse_wheel = 0
+  end
 
-    if row_hot then
-      setc(COL_ROW_HOV); gfx.rect(content_x,row_y,content_w,ROW_H,1)
-    elseif is_checked then
-      setc(COL_ROW_CHECKED); gfx.rect(content_x,row_y,content_w,ROW_H,1)
-    elseif (i%2)==1 then
-      setc(COL_ROW_ALT); gfx.rect(content_x,row_y,content_w,ROW_H,1)
+  -- ===== Render rows (TOP fixed via guards; BOTTOM intentionally not fixed yet) =====
+  local y = content_y - scroll_y
+  local table_w = icon_w + COL_GAP + col1_w + COL_GAP + col2_w
+  local last_drawn_bottom = nil
+
+  local vp_top = content_y
+  local vp_bot = content_y + content_h
+
+  for i=1,#display do
+    local it = display[i]
+    local cache = row_cache[i]
+    local rh = cache and cache.h or calc_row_h(1)
+
+    local row_top = y
+    local row_bot = y + rh
+
+    local vis_y0 = math.max(row_top, vp_top)
+    local vis_y1 = math.min(row_bot, vp_bot)
+
+    if vis_y1 > vis_y0 then
+      local is_checked = (checked[it.key] == true)
+
+      local x0 = content_x
+      local x1 = x0 + icon_w
+      local x2 = x1 + COL_GAP + col1_w
+      local x3 = x2 + COL_GAP + col2_w
+
+      -- highlight (slice only)
+      if is_checked then
+        gfx.set(SEL_R, SEL_G, SEL_B, 1)
+        gfx.rect(x0, vis_y0, table_w, (vis_y1 - vis_y0), 1)
+      end
+
+      -- vertical borders (slice only)
+      gfx.set(0,0,0,BORDER_A)
+      local clip_bot = math.min(vis_y1, vp_bot - 2)
+      local x_len_divider = math.floor(x0 + icon_w + COL_GAP + col1_w + COL_GAP + col2_w - LEN_W)
+      gfx.line(x0, vis_y0, x0, clip_bot, 1)
+      gfx.line(x1, vis_y0, x1, clip_bot, 1)
+      gfx.line(x2 + COL_GAP, vis_y0, x2 + COL_GAP, clip_bot, 1)
+      gfx.line(x_len_divider, vis_y0, x_len_divider, clip_bot, 1)
+      gfx.line(x3 + COL_GAP, vis_y0, x3 + COL_GAP, clip_bot, 1)
+
+      -- top horizontal line
+      if row_top >= vp_top and row_top <= vp_bot then
+        gfx.line(x0, row_top, x3 + COL_GAP, row_top, 1)
+      end
+
+      local sq = 12
+      local sx = math.floor(x0 + (icon_w - sq)/2)
+      local sy = math.floor(row_top + ROW_PAD_Y)
+      local tx = math.floor(x0 + icon_w + COL_GAP + col1_w + COL_GAP + CELL_PAD_X)
+      local ty = sy
+      
+      local top_fade = vp_top + 1  -- единый порог для всех элементов
+      
+      if sy >= top_fade and (sy + sq) <= vp_bot then
+        draw_square(sx, sy, sq, it.isrgn)
+        if is_checked then draw_checkmark(sx + 2, sy - 2) end
+      end
+      
+      if sy >= top_fade and (sy + LIST_SIZE) <= vp_bot then
+        local label = (it.isrgn and "R" or "M") .. tostring(it.shown_id)
+        gfx.set(0,0,0,1)
+        gfx.x = math.floor(x0 + icon_w + COL_GAP + 3); gfx.y = sy
+        gfx.drawstr(label)
+      end
+      
+      if it.isrgn and ty >= top_fade and (ty + LIST_SIZE) <= vp_bot then
+        local len_str = format_hhmmss(it.len or 0.0)
+        local lw = select(1, gfx.measurestr(len_str))
+        local len_x = math.floor(x0 + icon_w + COL_GAP + col1_w + COL_GAP + col2_w - CELL_PAD_X - lw)
+        gfx.set(0,0,0,0.55)
+        gfx.x = len_x; gfx.y = ty
+        gfx.drawstr(len_str)
+      end
+      
+      gfx.set(0,0,0,1)
+      local lines = (cache and cache.lines) or {trim(it.name)}
+      for li=1,#lines do
+        local ly = math.floor(ty + (li-1) * LINE_H)
+        if ly >= top_fade and (ly + LINE_H) <= vp_bot then
+          gfx.x = tx; gfx.y = ly
+          gfx.drawstr(lines[li] or "")
+        end
+      end
+      
+      last_drawn_bottom = math.min(row_bot, vp_bot)
     end
 
-    local cb_x = content_x + 8
-    local cb_y = row_y + math.floor((ROW_H - CHECK_W)/2)
-    draw_checkbox(cb_x, cb_y, is_checked)
+    y = y + rh
+  end
 
-    local text_x = cb_x + CHECK_W + 10
-    local label = string.format("R%d  %s", reg.id, trim(reg.name))
-    local len_str = format_hhmmss(reg.len)
+  -- bottom line
+  if last_drawn_bottom and last_drawn_bottom >= vp_top and last_drawn_bottom < (vp_bot - 1) then
+    gfx.set(0,0,0,BORDER_A)
+    gfx.line(content_x, last_drawn_bottom, content_x + table_w, last_drawn_bottom, 1)
+  end
 
-    setc(COL_TEXT)
-    gfx.x = text_x
-    gfx.y = row_y + math.floor((ROW_H - LIST_SIZE)/2) - 1
-    gfx.drawstr(label)
+  -- click handling
+  if lmb_click and in_rect(mx,my,content_x,content_y,content_w,content_h) then
+    local idx = hit_test_row(mx, my, content_x, content_y, content_w, content_h)
+    if idx and display[idx] then
+      local it = display[idx]
+      local desired = not (checked[it.key] == true)
 
-    local lw = select(1, gfx.measurestr(len_str))
-    setc(COL_TEXT_DIM)
-    gfx.x = content_x + content_w - lw - right_pad
-    gfx.y = row_y + math.floor((ROW_H - LIST_SIZE)/2) - 1
-    gfx.drawstr(len_str)
-
-    if lmb_click and row_hot then
-      local desired = not is_checked
       if shift and last_clicked_disp_index then
-        apply_range(last_clicked_disp_index, disp_index, desired)
+        apply_range(last_clicked_disp_index, idx, desired)
       else
-        toggle_check(reg.id)
+        if desired then checked[it.key]=true else checked[it.key]=nil end
       end
-      last_clicked_disp_index = disp_index
+
+      last_clicked_disp_index = idx
       compute_selected()
       save_checked()
     end
   end
 
-  -- scrollbar last
-  local sb_x = list_x + list_w - SB_W - 2
-  local sb_y = list_y + 1
-  local sb_h = list_h - 2
-  local sb_hot = in_rect(mx,my,sb_x,sb_y,SB_W,sb_h)
-  draw_scrollbar(sb_x, sb_y, SB_W, sb_h, sb_hot)
+  -- scrollbar (thumb only)
+  if max_scroll > 0 then
+    local bar_x = math.floor(list_x + list_w - SCROLL_W - SCROLL_MARGIN_R)
+    local bar_y = math.floor(list_y)
+    local bar_h = math.floor(list_h)
 
-  local thumb_x = sb_x + 2
-  local thumb_w = SB_W - 4
-  local thumb_y = sb_thumb_y
-  local thumb_h = sb_thumb_h
+    local thumb_y, thumb_h = get_thumb(bar_y, bar_h)
+    gfx.set(0,0,0,SCROLL_THUMB_A)
+    gfx.rect(bar_x, thumb_y, SCROLL_W, thumb_h, 1)
 
-  local over_thumb = in_rect(mx,my,thumb_x,thumb_y,thumb_w,thumb_h)
-  local over_sb = in_rect(mx,my,sb_x,sb_y,SB_W,sb_h)
+    local over_thumb = in_rect(mx,my,bar_x,thumb_y,SCROLL_W,thumb_h)
 
-  if lmb_click and over_thumb and sb_max_scroll > 0 then
-    sb_drag = true
-    sb_drag_offset = my - thumb_y
-  elseif lmb_click and over_sb and sb_max_scroll > 0 then
-    if my < thumb_y then scroll_by(-rows_visible)
-    elseif my > (thumb_y + thumb_h) then scroll_by(rows_visible) end
-  end
-
-  if sb_drag then
-    if lmb_down and sb_max_scroll > 0 then
-      local new_thumb_y = my - sb_drag_offset
-      new_thumb_y = clamp(new_thumb_y, sb_track_y, sb_track_y + (sb_track_h - sb_thumb_h))
-      set_scroll_from_thumb_y(new_thumb_y)
-      compute_scrollbar(list_y, list_h, rows_visible)
+    if lmb_click and over_thumb then
+      sb_drag = true
+      sb_drag_offset = my - thumb_y
     end
-    if lmb_release then sb_drag = false end
+
+    if sb_drag then
+      if lmb_down then
+        set_scroll_from_thumb(my, bar_y, bar_h, thumb_h, sb_drag_offset)
+      end
+      if lmb_release then sb_drag = false end
+    end
+  else
+    sb_drag = false
   end
 
   gfx.update()
@@ -609,8 +780,9 @@ local function loop()
 end
 
 -- ===== Init =====
-gfx.init(WINDOW_TITLE, WIN_W, WIN_H, 0)
-load_checked()
-refresh(true) -- first build resets anchor
-loop()
+gfx.init(WINDOW_TITLE, WIN_W, WIN_H, 0, 150, 350)
+gfx.setfont(1, FONT_MAIN, LIST_SIZE)
 
+load_checked()
+refresh(true)
+loop()
