@@ -6,9 +6,13 @@ Region Time Counter Pro is a lightweight, cross-platform REAPER script that
 calculates total and selected region duration using *union logic* — without
 double-counting overlapping regions.
 
-Developed as part of **34dev.tools**.
+Part of **34tools.edit** — Audio Tools by Alexey Vorobyov (34birds).
 
 ---
+
+## Latest Release
+
+[Download latest release](https://github.com/34tools/Region-Time-Counter-Pro/releases/latest)
 
 ## Features
 
