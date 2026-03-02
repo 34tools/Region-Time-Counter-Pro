@@ -10,3 +10,15 @@
 - Arrow keys scroll
 - Persistent checked regions saved in project
 - No js_ReaScriptAPI required
+
+## v3.0.0 — 2026-03-03
+
+### Added / Changed
+- macOS-safe UI: top border bleed fixed via safe-zone guards
+- Wrap-list rendering with variable row height
+- Pixel-based scrolling with draggable thumb
+- Markers displayed (excluded from totals)
+- Persistent selection stored in project extstate
+
+### Notes
+- Bottom border clipping intentionally not fixed yet
