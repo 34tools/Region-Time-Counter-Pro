@@ -28,7 +28,7 @@ Developed as part of **34dev.tools**.
 
 ## Installation
 
-1. Download `Region Time Counter Pro.lua`
+1. Download `Region-Time-Counter-Pro.lua`
 2. Place it in your REAPER Scripts folder
 3. Open **Actions → Show action list**
 4. Click **ReaScript → Load**
